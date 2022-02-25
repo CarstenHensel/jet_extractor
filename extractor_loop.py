@@ -34,7 +34,8 @@ def loop( fileName ):
     eventLoop.skipEvents( 0 )
     
     # Execute the event loop
-    eventLoop.loop( -1 )
+    #CH eventLoop.loop( -1 )
+    eventLoop.loop( 1)
 
 
 if __name__ == "__main__":

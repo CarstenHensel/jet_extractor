@@ -22,21 +22,55 @@ class JetExtractorDriver( Driver ):
     
     def processEvent( self, event ):
         ''' Method called by the event loop for each event '''
+
+        print(event.getCollectionNames())
+        jet_collection = event.getCollection("Durham2Jets")
+        print(jet_collection)
+
+        for jet in jet_collection:
+            print(jet.getEnergy())
+
+        jet_collection = event.getCollection("Durham3Jets")
+        print(jet_collection)
+
+        for jet in jet_collection:
+            print(jet.getEnergy())
+
+
+        jet_collection = event.getCollection("Durham4Jets")
+        print(jet_collection)
+
+        for jet in jet_collection:
+            print(jet.getEnergy())
+
+
+        et_collection = event.getCollection("Durham5Jets")
+        print(jet_collection)
+
+        for jet in jet_collection:
+            print(jet.getEnergy())
+
+
+        jet_collection = event.getCollection("Durham6Jets")
+        print(jet_collection)
+
+        for jet in jet_collection:
+            print(jet.getEnergy())
         
         # Get the MCParticle collection from the event
-        mcParticles = event.getMcParticles()
+        ##mcParticles = event.getMcParticles()
         
         # Loop over all MCParticles
-        for mcParticle in mcParticles:
-            
-            # Get the four vector of the MCParticle
-            v = mcParticle.getLorentzVec()
-            
-            # Fill the histograms
-            self.histograms['Energy'].Fill( v.Energy() )
-            self.histograms['Pt'].Fill( v.Pt() )
-            self.histograms['PDGID'].Fill( mcParticle.getPDG() )
-            self.histograms['GeneratorStatus'].Fill( mcParticle.getGeneratorStatus() )
+        ##for mcParticle in mcParticles:
+        ##    
+        ##    # Get the four vector of the MCParticle
+        ##    v = mcParticle.getLorentzVec()
+        ##    
+        ##    # Fill the histograms
+        ##    self.histograms['Energy'].Fill( v.Energy() )
+        ##    self.histograms['Pt'].Fill( v.Pt() )
+        ##    self.histograms['PDGID'].Fill( mcParticle.getPDG() )
+        ##    self.histograms['GeneratorStatus'].Fill( mcParticle.getGeneratorStatus() )
         
     def endOfData( self ):
         ''' Method called by the event loop at the end of the loop '''
