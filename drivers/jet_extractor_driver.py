@@ -1,6 +1,6 @@
 from __future__ import absolute_import, unicode_literals
 from pyLCIO.drivers.Driver import Driver
-from ROOT import TH1D, TCanvas
+from ROOT import TLorentzVector
 from sixlcio.moves import input
 from collections import OrderedDict
 import json
@@ -17,7 +17,7 @@ class ParticleContainer():
     log_rel_e  : float 
     delta_R    : float
         
-    def get_dict(self):
+    def get_record(self):
         d = {}
         d["delta_eta"]  = self.delta_eta  
         d["delta_phi"]  = self.delta_phi 
@@ -28,14 +28,54 @@ class ParticleContainer():
         d["delta_R"]    = self.delta_R
         return d
 
-@dataclass
+
 class JetContainer():
-    eta    : float
-    phi    : float
-    energy : float
-    pt     : float
+    def __init__(self, lcio_jet):
+        self.jet = lcio_jet 
+        self.pdgid = -1
+        self.particles = None
 
+    def get_record(self):
+        d = {}
+        dp = {}
+        lorentz_vec = self.jet.getLorentzVec()
+        d["eta"]       = lorentz_vec.Eta()
+        d["phi"]       = lorentz_vec.Phi()
+        d["energy"]    = lorentz_vec.Energy()
+        d["pt"]        = lorentz_vec.Pt()
+        d["pdgid"]     = self.pdgid
+        d["npart"]     = len(self.particles)
 
+        indices = range(len(self.particles))
+        for index, p in zip(indices, self.particles):
+            key = "particle " + str(index)
+            dp[key] = p.get_record()
+        d["particles"] = dp
+        return d
+
+    def add_particles(self, particles):
+        self.particles = particles
+
+    def add_pdgid(self, pdgid):
+        self.pdgid = pdgid
+
+class EventContainer():
+    def __init__(self, event_number, jets):
+        self.event_number = event_number
+        self.jets = jets
+
+    def get_record(self):
+        d = {}
+        dp = {}
+        d["event"] = self.event_number
+        d["njets"] = len(self.jets)
+        
+        indices = range(len(self.jets))
+        for index, j in zip(indices, self.jets):
+            key = "jet " + str(index)
+            dp["index"] = j.get_record()
+        d["jets"] = dp
+        return d
 
 class JetExtractorDriver( Driver ):
     def __init__( self ):
@@ -46,55 +86,46 @@ class JetExtractorDriver( Driver ):
     def startOfData( self ):
         ''' Method called by the event loop at the beginning of the loop '''
         
-        # Create ordered dictionary 
-        self.v = OrderedDict()
-
-        p = ParticleContainer(1, 2, 3, 4, 5, 6, 7)
+        self.jet_records = []
        
-        with open('data.json', 'w') as f:
-            json.dump(p.get_dict(), f)
     
     def processEvent( self, event ):
         ''' Method called by the event loop for each event '''
         n = 0
-        event_number = event.getEventNumber()
+        
 
-        print(event.getCollectionNames())
-        #MCParticles
+        #print(event.getCollectionNames())
+        
         mcparticles = event.getCollection("MCParticles")
-        print(self.find_initial_state(mcparticles))
+        quarks = self.find_quarks(mcparticles)
 
-        self.print_mc_tree(mcparticles)
+        
 
-        out_put = {"jet content": {"ID":-1, "delta_eta":[], "delta_phi":[], "log pT":[], \
-                                  "log E":[], "log rel pT":[], "log rel E":[], "Delta R": -1}}
 
         jet_collection = event.getCollection("Durham2Jets")
         print(jet_collection, jet_collection.size())
         
         n_jet = 0
         output_jets = []
-        for j in jet_collection:
+        for lcio_jet in jet_collection:
             n_jet += 1
-            
-            #print(help(j))
-            #print(j.id(), j.getType())
 
-            lorentz_vec = j.getLorentzVec()
-            energy = lorentz_vec.Energy()
-            eta = lorentz_vec.Eta()
-            phi = lorentz_vec.Phi()
-            pt = lorentz_vec.Pt()
-            jet = JetContainer(eta, phi, energy, pt)
+            jet_lorentz_vec = lcio_jet.getLorentzVec()
+            jet_eta = jet_lorentz_vec.Eta()
+            jet_phi = jet_lorentz_vec.Phi()
+            jet_pt = jet_lorentz_vec.Pt()
+            jet_energy = jet_lorentz_vec.Energy()
+
+            jet = JetContainer(lcio_jet)
 
             output_jets.append(jet)
 
             # get particle from jet:
-            particles = j.getParticles()
+            lcio_particles = lcio_jet.getParticles()
             n_particles = 0
 
             output_particles = []
-            for p in particles:
+            for p in lcio_particles:
                 n_particles += 1
                 p_lorentz_vec = p.getLorentzVec()
                 particle_energy = p_lorentz_vec.Energy()
@@ -102,63 +133,45 @@ class JetExtractorDriver( Driver ):
                 particle_phi = p_lorentz_vec.Phi()
                 particle_pt = p_lorentz_vec.Pt()
 
-                delta_eta = eta - particle_eta
-                delta_phi = phi - particle_phi
+                delta_eta = jet_eta - particle_eta
+                delta_phi = jet_phi - particle_phi
                 log_pt = log(particle_pt)
                 log_e = log(particle_energy)
-                log_rel_pt = log(particle_pt / pt)
-                log_rel_e = log(particle_energy / energy)
+                log_rel_pt = log(particle_pt / jet_pt)
+                log_rel_e = log(particle_energy / jet_energy)
                 delta_r = sqrt(delta_eta**2 + delta_phi**2)
                 particle = ParticleContainer(delta_eta, delta_phi, log_pt, log_e, log_rel_pt, log_rel_e, delta_r)
                 output_particles.append(particle)
+            jet.add_particles(output_particles)
+            output_jets.append(jet)
+            
+        event_container = EventContainer(event.getEventNumber(), output_jets)
+        self.jet_records.append(event_container.get_record()) 
+        
         
     def endOfData( self ):
         ''' Method called by the event loop at the end of the loop '''
-        
-        # Create a canvas for each histogram and draw them
-        
-        
+        with open('data.json', 'w') as f:
+              json.dump(self.jet_records, f, indent=4)
         userInput = input('Press any key to continue')
 
-
-    def find_initial_state(self, mcparticles):
-        initial_state = []
-        for particle in mcparticles:
-            if particle.getParents():
-                continue
-            else:
-                initial_state.append(particle)
-        return initial_state
 
 
     def find_quarks(self, mcparticles):
         quark_ids = [1, 2, 3, 4, 5, 6]
+        string_id = 92
         quarks = []
         for mcp in mcparticles:
-            if mcp.getPDG() in quark_ids:
-                daughters = mcp.getDaughters()
-                if daughters:
-                    final_quark = False
-                    for d in daughters:
-                        if d.getPDG() not in quark_ids:
-                            print(mcp.getPDG(), d.getPDG(), mcp.getEnergy())
-                            self.get_parents(mcp)
-                            final_quark = True
-                    if final_quark:
-                        quarks.append(mcp)
+            if mcp.getPDG() == string_id:
+                for parent in mcp.getParents():
+                    quarks.append(parent)
         return quarks
 
-    def get_parents(self, mcp):
-        parents = []
-        parent_ids = []
-        helper = mcp
-        while helper.getParents():
-            for p in helper.getParents():
-                parents.append(p)
-                parent_ids.append(p.getPDG())
-                helper = parents[-1]
-        print(parent_ids)
         
+    def jet_matching(self, jets, quarks):
+        for j in jets:
+            jet_vec = TLorentzVector()
+
 
     def print_mc_tree(self, mcparticles):
         for mcp in mcparticles:
@@ -168,3 +181,4 @@ class JetExtractorDriver( Driver ):
             for d in daughters:
                 string += " " + str(d.id()) + " " + str(d.getPDG()) + "     "
             print(string)
+            print(" ")
