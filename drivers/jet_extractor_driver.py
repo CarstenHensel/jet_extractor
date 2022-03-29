@@ -73,7 +73,7 @@ class EventContainer():
         indices = range(len(self.jets))
         for index, j in zip(indices, self.jets):
             key = "jet " + str(index)
-            dp["index"] = j.get_record()
+            dp[key] = j.get_record()
         d["jets"] = dp
         return d
 
